@@ -29,8 +29,9 @@ export async function ai(task, payload) {
   const token = await store.token();
   let res;
   try {
-    res = await fetch("/api/ai", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ task, ...payload }) });
-  } catch {
+    res = await fetch("/api/ai", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ task, ...payload }), signal: AbortSignal.timeout ? AbortSignal.timeout(240000) : undefined });
+  } catch (e) {
+    if (e && (e.name === "TimeoutError" || e.name === "AbortError")) throw new Error("Yapay zekâ çok uzun sürdü. Tekrar dene.");
     throw new Error("Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.");
   }
   const j = await res.json().catch(() => ({}));

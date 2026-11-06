@@ -70,32 +70,50 @@ async function authenticate(request, env) {
 
 const BASE = (env) => env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta";
 
+// Düşünme (thinking) ayarı: modele göre desteklenen ilk biçim bulunur ve hatırlanır.
+const THINK_OPTS = [{ thinkingLevel: "low" }, { thinkingBudget: 1024 }, null];
+let thinkIdx = 0;
+
 async function gemini(env, { model, contents, system, json: wantJson, temperature = 0.5, maxTokens = 8192, extra = {} }) {
   if (!env.GEMINI_API_KEY) throw new HttpError(503, "Yapay zekâ anahtarı (GEMINI_API_KEY) tanımlı değil.", "not_configured");
-  const body = {
-    contents,
-    generationConfig: { temperature, maxOutputTokens: maxTokens, ...(wantJson ? { responseMimeType: "application/json" } : {}), ...extra },
-  };
-  if (system) body.systemInstruction = { parts: [{ text: system }] };
-  let res;
-  try {
-    res = await fetch(`${BASE(env)}/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new HttpError(502, "Yapay zekâ servisine ulaşılamadı.", "provider");
+  const isAudio = !!extra.responseModalities;
+  for (;;) {
+    const think = isAudio ? null : THINK_OPTS[thinkIdx];
+    const generationConfig = {
+      temperature,
+      ...(maxTokens ? { maxOutputTokens: isAudio ? maxTokens : Math.max(maxTokens, 16384) } : {}),
+      ...(wantJson ? { responseMimeType: "application/json" } : {}),
+      ...(think ? { thinkingConfig: think } : {}),
+      ...extra,
+    };
+    const body = { contents, generationConfig };
+    if (system) body.systemInstruction = { parts: [{ text: system }] };
+    let res;
+    try {
+      res = await fetch(`${BASE(env)}/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(110000),
+      });
+    } catch (e) {
+      if (e && (e.name === "TimeoutError" || e.name === "AbortError")) throw new HttpError(504, "Yapay zekâ çok uzun sürdü. Tekrar dene.", "provider");
+      throw new HttpError(502, "Yapay zekâ servisine ulaşılamadı.", "provider");
+    }
+    if (res.status === 429) throw new HttpError(429, "Ücretsiz yapay zekâ kotası şu an dolu. Birkaç dakika sonra (günlük sınırsa yarın) tekrar dene.", "quota");
+    if (res.status === 404) throw new HttpError(502, `Model bulunamadı: ${model}`, "model_not_found");
+    if (!res.ok) {
+      const t = await res.text();
+      if (/API key/i.test(t)) throw new HttpError(503, "Yapay zekâ anahtarı geçersiz.", "not_configured");
+      if (res.status === 400 && think && thinkIdx < THINK_OPTS.length - 1) {
+        thinkIdx++;
+        continue;
+      }
+      console.error("Gemini", res.status, t.slice(0, 400));
+      throw new HttpError(502, `Yapay zekâ isteği başarısız oldu (${res.status}). Tekrar dene.`, "provider");
+    }
+    return res.json();
   }
-  if (res.status === 429) throw new HttpError(429, "Ücretsiz yapay zekâ kotası şu an dolu. Birkaç dakika sonra (günlük sınırsa yarın) tekrar dene.", "quota");
-  if (res.status === 404) throw new HttpError(502, `Model bulunamadı: ${model}`, "model_not_found");
-  if (!res.ok) {
-    const t = await res.text();
-    if (/API key/i.test(t)) throw new HttpError(503, "Yapay zekâ anahtarı geçersiz.", "not_configured");
-    console.error("Gemini", res.status, t.slice(0, 400));
-    throw new HttpError(502, "Yapay zekâ isteği başarısız oldu. Tekrar dene.", "provider");
-  }
-  return res.json();
 }
 
 function textOf(data) {
