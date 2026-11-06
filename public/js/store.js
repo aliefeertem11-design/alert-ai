@@ -16,7 +16,7 @@ export async function initStore() {
     /* sunucu yoksa yerel mod */
   }
   if (config.supabaseUrl && config.supabaseAnonKey) {
-    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+    const { createClient } = await import("/vendor/supabase.js");
     backend = supabaseBackend(createClient(config.supabaseUrl, config.supabaseAnonKey));
   } else {
     backend = localBackend();
@@ -36,11 +36,12 @@ function applyXP(profile, xp) {
 
 // ───────── Supabase ─────────
 function supabaseBackend(sb) {
-  const uid = async () => (await sb.auth.getUser()).data.user?.id;
+  const uid = async () => (await sb.auth.getSession()).data.session?.user?.id; // yerel, ağ isteği yok
   const check = ({ data, error }) => {
     if (error) throw new Error(trError(error.message));
     return data;
   };
+  const courseCache = new Map();
   return {
     local: false,
     async session() {
@@ -105,14 +106,27 @@ function supabaseBackend(sb) {
       return check(await sb.from("courses").select("id,subject,exam_name,exam_date,target_grade,scale,level,plan,created_at").order("created_at", { ascending: false }));
     },
     async course(id) {
-      return check(await sb.from("courses").select("*").eq("id", id).single());
+      // Yol bilgisi değişmediği için bellekte saklanır (tekrar tekrar indirilmez)
+      if (!courseCache.has(id)) {
+        const p = sb.from("courses").select("*").eq("id", id).single().then(check);
+        courseCache.set(id, p);
+        p.catch(() => courseCache.delete(id));
+      }
+      return courseCache.get(id);
     },
     async createCourse(c) {
       const user_id = await uid();
       return check(await sb.from("courses").insert({ ...c, user_id }).select().single());
     },
     async deleteCourse(id) {
+      courseCache.delete(id);
       check(await sb.from("courses").delete().eq("id", id));
+    },
+    async allProgress() {
+      const rows = check(await sb.from("step_progress").select("course_id,step_id,completed_at").not("completed_at", "is", null));
+      const out = {};
+      for (const r of rows) (out[r.course_id] ||= {})[r.step_id] = r;
+      return out;
     },
     async progress(courseId) {
       const rows = check(await sb.from("step_progress").select("step_id,stars,best_score,completed_at").eq("course_id", courseId));
@@ -305,6 +319,11 @@ function localBackend() {
       d.courses = d.courses.filter((c) => c.id !== id);
       delete d.progress[id];
       save();
+    },
+    async allProgress() {
+      const out = {};
+      for (const c of me().courses) out[c.id] = await this.progress(c.id);
+      return out;
     },
     async progress(courseId) {
       const p = me().progress[courseId] || {};

@@ -10,8 +10,8 @@ const greet = () => {
 
 export async function render(el) {
   const p = ctx.profile || {};
-  const [courses, activity] = await Promise.all([store.courses(), store.activity(1).catch(() => [])]);
-  const progresses = await Promise.all(courses.map((c) => store.progress(c.id).catch(() => ({}))));
+  const [courses, activity, all] = await Promise.all([store.courses(), store.activity(1).catch(() => []), store.allProgress().catch(() => ({}))]);
+  const progresses = courses.map((c) => all[c.id] || {});
   const todayXP = activity.reduce((n, a) => n + (a.xp || 0), 0);
   const goal = p.daily_goal || 30;
   const goalPct = Math.min(100, Math.round((todayXP / goal) * 100));

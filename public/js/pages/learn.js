@@ -17,7 +17,14 @@ export function flatSteps(plan) {
 }
 
 export async function render(el) {
-  const courses = await store.courses();
+  let cid0 = null;
+  try { cid0 = localStorage.getItem("alertai_course"); } catch {}
+  // Liste, seçili yol ve ilerleme aynı anda istenir (daha hızlı açılış)
+  const [courses, pre, preProg] = await Promise.all([
+    store.courses(),
+    cid0 ? store.course(cid0).catch(() => null) : null,
+    cid0 ? store.progress(cid0).catch(() => null) : null,
+  ]);
   if (!courses.length) {
     el.innerHTML = `
       <div class="learn-top"><div></div>${topStats()}</div>
@@ -31,8 +38,9 @@ export async function render(el) {
   }
   let cid = null;
   try { cid = localStorage.getItem("alertai_course"); } catch {}
-  const course = await store.course(courses.some((c) => c.id === cid) ? cid : courses[0].id);
-  const progress = await store.progress(course.id);
+  const useId = courses.some((c) => c.id === cid) ? cid : courses[0].id;
+  const course = pre && pre.id === useId ? pre : await store.course(useId);
+  const progress = preProg && pre && pre.id === useId ? preProg : await store.progress(course.id);
   const steps = flatSteps(course.plan);
   const currentIdx = steps.findIndex((s) => !progress[s.id]?.completed_at);
   const doneCount = steps.filter((s) => progress[s.id]?.completed_at).length;

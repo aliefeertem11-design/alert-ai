@@ -129,8 +129,8 @@ export function relevantExcerpt(material, query, max = 8000) {
 export async function extractText(file, onProgress) {
   const name = file.name.toLowerCase();
   if (name.endsWith(".pdf") || file.type === "application/pdf") {
-    const pdfjs = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs");
-    pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+    const pdfjs = await import("/vendor/pdfjs/pdf.min.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
     const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
     let out = "";
     for (let i = 1; i <= pdf.numPages; i++) {

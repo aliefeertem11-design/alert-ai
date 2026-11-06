@@ -10,11 +10,15 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="/vendor/katex/katex.min.css" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="/css/app.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<link rel="modulepreload" href="/js/app.js">
+<link rel="modulepreload" href="/js/store.js">
+<link rel="modulepreload" href="/js/ui.js">
+<link rel="modulepreload" href="/vendor/supabase.js">
+<script defer src="/vendor/marked.min.js"></script>
+<script defer src="/vendor/katex/katex.min.js"></script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">

@@ -50,7 +50,7 @@ async function generateStep(course, step) {
 }
 
 export async function render(el, { params: [courseId, stepId] }) {
-  const course = await store.course(courseId);
+  const [course, cached] = await Promise.all([store.course(courseId), store.stepContent(courseId, stepId).catch(() => null)]);
   const steps = flatSteps(course.plan);
   const step = steps.find((s) => s.id === stepId);
   if (!step) return go("#/ogren");
@@ -70,7 +70,7 @@ export async function render(el, { params: [courseId, stepId] }) {
       el.querySelector("#retry").onclick = () => render(el, { params: [courseId, stepId] });
     }
   };
-  let content = await store.stepContent(courseId, stepId);
+  let content = cached;
   if (!content) {
     loading(step.type === "podcast" ? "Podcast senaryosu yazılıyor…" : "Bu adım senin için hazırlanıyor…");
     try {
