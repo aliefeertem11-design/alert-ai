@@ -262,7 +262,7 @@ Kurallar:
 JSON: {"title":"", "tip":"", "dailyMinutes":20, "units":[{"title":"", "description":"", "steps":[{"type":"lesson","title":""}]}]}
 ${b.material ? `\nÖĞRENCİNİN MATERYALİ (konuları buradan çıkar):\n"""\n${clip(b.material, 60000)}\n"""` : "\n(Materyal yok: bu ders ve seviye için yaygın konuları kullan; resmî müfredat iddiasında bulunma.)"}`,
     `Sen deneyimli bir öğretmen ve öğrenme tasarımcısısın. ${RULES}`,
-    { maxTokens: 6000 },
+    { maxTokens: 6000, model: env.GEMINI_FAST_MODEL || "gemini-flash-lite-latest" },
   );
   if (!Array.isArray(plan.units) || !plan.units.length) throw new HttpError(502, "Plan oluşturulamadı. Tekrar dene.", "bad_output");
   const allowed = ["lesson", "practice", "cards", "podcast", "review", "boss"];
@@ -278,49 +278,78 @@ ${b.material ? `\nÖĞRENCİNİN MATERYALİ (konuları buradan çıkar):\n"""\n$
   return plan;
 }
 
-const STEP_GUIDE = {
-  lesson: "Önce 2-4 kısa anlatım kartı (intro) yaz: her biri tek bir fikri, örnekle, en fazla 70 kelimeyle anlatsın. Sonra bu kartlardan 6 soru yaz.",
-  practice: "intro boş olsun. Konudan 8 karışık soru yaz.",
-  review: "intro boş olsun. Listelenen önceki konulardan karışık 8 tekrar sorusu yaz.",
-  boss: "intro boş olsun. Ünitenin tamamını kapsayan, biraz daha zor 10 soru yaz.",
-  cards: "intro boş olsun, questions boş olsun. 8-10 bilgi kartı (cards) yaz: front kısa soru/terim, back kısa cevap.",
+// Adımlar hız için iki parçaya bölünüp aynı anda üretilir.
+const STEP_PARTS = {
+  lesson: [
+    { intro: true, n: 3, focus: "Önce 2-3 kısa anlatım kartı (intro) yaz: her biri tek bir fikri, bir örnekle, en fazla 60 kelimeyle anlatsın. Sonra bu kartlardaki temel bilgileri yoklayan 3 kolay soru yaz." },
+    { n: 3, focus: "intro boş olsun. Konuyu uygulamaya döken, orta zorlukta 3 soru yaz." },
+  ],
+  practice: [
+    { n: 4, focus: "intro boş olsun. Konunun temel kavramlarından 4 karışık soru yaz." },
+    { n: 4, focus: "intro boş olsun. Konunun uygulama ve yorum gerektiren kısmından 4 karışık soru yaz." },
+  ],
+  review: [
+    { n: 4, focus: "intro boş olsun. Öğrencinin yanlış yaptığı sorulara benzer 4 tekrar sorusu yaz (yanlış yoksa ilk konulardan)." },
+    { n: 4, focus: "intro boş olsun. Listelenen önceki konulardan karışık 4 tekrar sorusu yaz." },
+  ],
+  boss: [
+    { n: 4, focus: "intro boş olsun. Ünitenin ilk yarısını kapsayan, biraz zor 4 soru yaz." },
+    { n: 4, focus: "intro boş olsun. Ünitenin ikinci yarısını ve konular arası bağlantıları kapsayan, biraz zor 4 soru yaz." },
+  ],
+  cards: [
+    { cards: true, n: 0, focus: "intro boş olsun, questions boş olsun. Konunun ilk yarısından 5 bilgi kartı (cards) yaz: front kısa soru/terim, back kısa cevap." },
+    { cards: true, n: 0, focus: "intro boş olsun, questions boş olsun. Konunun ikinci yarısından 5 bilgi kartı (cards) yaz: front kısa soru/terim, back kısa cevap." },
+  ],
 };
 
 async function taskStep(b, env) {
-  const type = STEP_GUIDE[b.type] ? b.type : "practice";
-  const data = await askJSON(
-    env,
-    `Ders: ${clip(b.subject, 80)} · Sınav: ${clip(b.examName, 120)} · Öğrenci: ${clip(b.grade, 40) || "lise"}
+  const type = STEP_PARTS[b.type] ? b.type : "practice";
+  const head = `Ders: ${clip(b.subject, 80)} · Sınav: ${clip(b.examName, 120)} · Öğrenci: ${clip(b.grade, 40) || "lise"}
 Ünite: ${clip(b.unitTitle, 120)}
 Adım: ${clip(b.stepTitle, 120)} (${type})
-${b.reviewTopics ? `Tekrar edilecek konular: ${clip(b.reviewTopics, 600)}\n` : ""}${b.mistakes ? `Öğrencinin daha önce yanlış yaptığı sorular (bunlara benzer sorular da ekle):\n${clip(b.mistakes, 1500)}\n` : ""}
-${STEP_GUIDE[type]}
-
-Soru türleri (karışık kullan):
+${b.reviewTopics ? `Tekrar edilecek konular: ${clip(b.reviewTopics, 600)}\n` : ""}${b.mistakes ? `Öğrencinin daha önce yanlış yaptığı sorular:\n${clip(b.mistakes, 1500)}\n` : ""}`;
+  const qTypes = `Soru türleri (karışık kullan):
 - "mc": çoktan seçmeli, 4 seçenek, "answer" doğru seçeneğin sırası (0-3)
 - "tf": doğru/yanlış ifade, "answer" true/false (belirsiz ifade yazma)
 - "fill": tek kelimelik/kısa cevaplı boşluk doldurma; "prompt" içinde ____ olsun, "answer" doğru cevap, "accept" kabul edilecek diğer yazımlar
 - "match": 4 eşleştirme çifti, "pairs":[{"left":"","right":""}]
-Her soruda "explanation" (neden doğru, 1-2 cümle) olsun.
-
-JSON: {"intro":[{"title":"","body":""}], "questions":[{"kind":"mc","prompt":"","options":["","","",""],"answer":0,"explanation":""},{"kind":"tf","prompt":"","answer":true,"explanation":""},{"kind":"fill","prompt":"","answer":"","accept":[],"explanation":""},{"kind":"match","prompt":"Eşleştir","pairs":[{"left":"","right":""}],"explanation":""}], "cards":[{"front":"","back":""}]}
-${b.material ? `\nKAYNAK MATERYAL (yalnızca buna dayan):\n"""\n${clip(b.material, 9000)}\n"""` : ""}`,
-    `Sen Duolingo tarzı kısa, net ve eğlenceli alıştırmalar hazırlayan bir öğretmensin. ${RULES}`,
-    { maxTokens: 8000, temperature: 0.6 },
-  );
-  // Doğrulama: bozuk soruları ayıkla
-  const qs = (data.questions || []).filter((q) => {
+Her soruda "explanation" (neden doğru, tek kısa cümle) olsun.`;
+  const src = b.material ? `\nKAYNAK MATERYAL (yalnızca buna dayan):\n"""\n${clip(b.material, 7000)}\n"""` : "";
+  const system = `Sen Duolingo tarzı kısa, net ve eğlenceli alıştırmalar hazırlayan bir öğretmensin. Kısa yaz. ${RULES}`;
+  const model = env.GEMINI_FAST_MODEL || "gemini-flash-lite-latest";
+  const parts = STEP_PARTS[type].map((part) => {
+    const shape = part.cards
+      ? `JSON: {"cards":[{"front":"","back":""}]}`
+      : `JSON: {"intro":[{"title":"","body":""}], "questions":[{"kind":"mc","prompt":"","options":["","","",""],"answer":0,"explanation":""},{"kind":"tf","prompt":"","answer":true,"explanation":""},{"kind":"fill","prompt":"","answer":"","accept":[],"explanation":""},{"kind":"match","prompt":"Eşleştir","pairs":[{"left":"","right":""}],"explanation":""}]}`;
+    return askJSON(env, `${head}\n${part.focus}\n\n${part.cards ? "" : qTypes + "\n\n"}${shape}${src}`, system, { maxTokens: 4000, temperature: 0.6, model });
+  });
+  const results = await Promise.allSettled(parts);
+  const ok = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  if (!ok.length) throw results[0].reason;
+  const intros = results.flatMap((r, i) => (r.status === "fulfilled" && STEP_PARTS[type][i].intro ? r.value.intro || [] : []));
+  const data = { intro: intros, questions: ok.flatMap((d) => d.questions || []), cards: ok.flatMap((d) => d.cards || []) };
+  const seen = new Set();
+  const qs = data.questions.filter((q) => {
     if (!q || typeof q.prompt !== "string") return false;
-    if (q.kind === "mc") return Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer < q.options.length;
+    const k = q.prompt.trim().toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    if (q.kind === "mc") return Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
     if (q.kind === "tf") return typeof q.answer === "boolean";
     if (q.kind === "fill") return typeof q.answer === "string" && q.answer.trim();
     if (q.kind === "match") return Array.isArray(q.pairs) && q.pairs.length >= 2 && q.pairs.every((p) => p.left && p.right);
     return false;
   });
   return {
-    intro: (data.intro || []).filter((c) => c && c.body).slice(0, 5),
+    intro: data.intro.filter((c) => c && c.body).slice(0, 4),
     questions: qs.slice(0, 12),
-    cards: (data.cards || []).filter((c) => c && c.front && c.back).slice(0, 12),
+    cards: data.cards.filter((c) => {
+      if (!c || !c.front || !c.back) return false;
+      const k = "c:" + String(c.front).trim().toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).slice(0, 12),
   };
 }
 
