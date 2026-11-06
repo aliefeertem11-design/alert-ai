@@ -186,6 +186,12 @@ export function render(el) {
       });
       clearInterval(timer);
       try { localStorage.setItem("alertai_course", course.id); } catch {}
+      // İlk adımı hemen arka planda hazırlamaya başla.
+      import("./player.js").then(async (m) => {
+        const { flatSteps } = await import("./learn.js");
+        const c = { ...course, plan: course.plan || plan };
+        for (const s of flatSteps(c.plan).slice(0, 2)) await m.prefetchStep(c, s);
+      }).catch(() => {});
       const nSteps = plan.units.reduce((n, u) => n + u.steps.length, 0);
       el.innerHTML = `<div class="main-inner"><div class="wizard"><div class="gen-anim fade">
         <div class="orb" style="animation:none;background:radial-gradient(circle at 35% 30%,#8fe0bd,#4fae86 55%,#1d4a38);box-shadow:0 0 60px rgba(79,174,134,.45)"></div>

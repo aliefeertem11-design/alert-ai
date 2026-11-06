@@ -13,6 +13,42 @@ function lev(a, b) {
   return d[a.length][b.length];
 }
 
+// ── Adım içeriği üretimi (aynı adım için tek istek; sonuç kaydedilir) ──
+const pending = new Map();
+export function prepareStep(course, step) {
+  const key = `${course.id}/${step.id}`;
+  if (!pending.has(key)) {
+    const p = generateStep(course, step).finally(() => setTimeout(() => pending.delete(key), 1000));
+    pending.set(key, p);
+  }
+  return pending.get(key);
+}
+export async function prefetchStep(course, step) {
+  try {
+    if (await store.stepContent(course.id, step.id)) return;
+    await prepareStep(course, step);
+  } catch { /* arka plan: sessizce geç */ }
+}
+async function generateStep(course, step) {
+  const unit = course.plan.units[step.unit];
+  const excerpt = relevantExcerpt(course.material, `${unit.title} ${step.title} ${unit.description || ""}`, 9000);
+  let content;
+  if (step.type === "podcast") {
+    content = await ai("podcast", { topic: `${unit.title}: ${step.title}`, material: excerpt, style: "sohbet", minutes: 3 });
+  } else {
+    const prevUnits = course.plan.units.slice(0, step.unit + 1).map((u) => u.title).join(", ");
+    const mistakes = step.type === "review" ? (await store.mistakes(course.id)).slice(0, 8).map((m) => `- ${m.question} (doğru: ${m.correct_answer})`).join("\n") : "";
+    content = await ai("step", {
+      type: step.type, subject: course.subject, examName: course.exam_name, grade: ctx.profile?.grade,
+      unitTitle: unit.title, stepTitle: step.title, material: step.type === "review" ? relevantExcerpt(course.material, prevUnits, 9000) : excerpt,
+      reviewTopics: step.type === "review" ? prevUnits : "", mistakes,
+    });
+    if (step.type === "cards" ? !content.cards?.length : !content.questions?.length) throw new Error("İçerik oluşturulamadı. Tekrar dene.");
+  }
+  await store.saveStepContent(course.id, step.id, content).catch(() => {});
+  return content;
+}
+
 export async function render(el, { params: [courseId, stepId] }) {
   const course = await store.course(courseId);
   const steps = flatSteps(course.plan);
@@ -38,24 +74,16 @@ export async function render(el, { params: [courseId, stepId] }) {
   if (!content) {
     loading(step.type === "podcast" ? "Podcast senaryosu yazılıyor…" : "Bu adım senin için hazırlanıyor…");
     try {
-      const excerpt = relevantExcerpt(course.material, `${unit.title} ${step.title} ${unit.description || ""}`, 9000);
-      if (step.type === "podcast") {
-        content = await ai("podcast", { topic: `${unit.title}: ${step.title}`, material: excerpt, style: "sohbet", minutes: 3 });
-      } else {
-        const prevUnits = course.plan.units.slice(0, step.unit + 1).map((u) => u.title).join(", ");
-        const mistakes = step.type === "review" ? (await store.mistakes(courseId)).slice(0, 8).map((m) => `- ${m.question} (doğru: ${m.correct_answer})`).join("\n") : "";
-        content = await ai("step", {
-          type: step.type, subject: course.subject, examName: course.exam_name, grade: ctx.profile?.grade,
-          unitTitle: unit.title, stepTitle: step.title, material: step.type === "review" ? relevantExcerpt(course.material, prevUnits, 9000) : excerpt,
-          reviewTopics: step.type === "review" ? prevUnits : "", mistakes,
-        });
-        if (step.type === "cards" ? !content.cards?.length : !content.questions?.length) throw new Error("İçerik oluşturulamadı. Tekrar dene.");
-      }
-      await store.saveStepContent(courseId, stepId, content).catch(() => {});
+      content = await prepareStep(course, step);
     } catch (e) {
       return loading("", e.message);
     }
   }
+  // Sıradaki adımı arka planda hazırla, böylece beklemeden açılır.
+  (async () => {
+    const i = steps.indexOf(step);
+    for (const s of steps.slice(i + 1, i + 3)) await prefetchStep(course, s);
+  })();
 
   if (step.type === "podcast") return podcastStep(el, { course, step, unit, content });
 

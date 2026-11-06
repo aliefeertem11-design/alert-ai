@@ -71,7 +71,7 @@ async function authenticate(request, env) {
 const BASE = (env) => env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta";
 
 // Düşünme (thinking) ayarı: modele göre desteklenen ilk biçim bulunur ve hatırlanır.
-const THINK_OPTS = [{ thinkingLevel: "low" }, { thinkingBudget: 1024 }, null];
+const THINK_OPTS = [{ thinkingLevel: "minimal" }, { thinkingBudget: 0 }, { thinkingBudget: 512 }, null];
 const thinkIdx = {};
 // Model meşgulse (503) veya bulunamazsa sıradaki ücretsiz modele geçilir.
 const TEXT_FALLBACKS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"];

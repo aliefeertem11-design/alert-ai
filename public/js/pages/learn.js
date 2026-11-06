@@ -36,6 +36,12 @@ export async function render(el) {
   const steps = flatSteps(course.plan);
   const currentIdx = steps.findIndex((s) => !progress[s.id]?.completed_at);
   const doneCount = steps.filter((s) => progress[s.id]?.completed_at).length;
+  // Sıradaki adımları arka planda hazırla (sırayla, kotayı yormadan).
+  if (currentIdx !== -1) {
+    import("./player.js").then(async (m) => {
+      for (const s of steps.slice(currentIdx, currentIdx + 2)) await m.prefetchStep(course, s);
+    }).catch(() => {});
+  }
   const activity = await store.activity(1).catch(() => []);
   const todayXP = activity.find((a) => a.day === new Date().toLocaleDateString("sv-SE"))?.xp || 0;
   const goal = ctx.profile?.daily_goal || 30;
