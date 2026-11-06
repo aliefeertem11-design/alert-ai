@@ -158,6 +158,10 @@ function supabaseBackend(sb) {
     async deletePodcast(id) {
       check(await sb.from("podcasts").delete().eq("id", id));
     },
+    async adminOverview() { return check(await sb.rpc("admin_overview")); },
+    async adminUsers() { return check(await sb.rpc("admin_users")); },
+    async adminUserDetail(id) { return check(await sb.rpc("admin_user_detail", { p_user: id })); },
+    async adminDeleteUser(id) { check(await sb.rpc("admin_delete_user", { p_user: id })); },
     async deleteAccount() {
       check(await sb.rpc("delete_my_account"));
       await sb.auth.signOut();

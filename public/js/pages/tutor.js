@@ -1,6 +1,6 @@
 import { ctx } from "../app.js";
 import { store } from "../store.js";
-import { ai, esc, md, icon, relevantExcerpt } from "../ui.js";
+import { ai, aiStream, esc, md, icon, relevantExcerpt } from "../ui.js";
 import { podcastAudio, speakFallback } from "../audio.js";
 
 const MODES = [
@@ -75,9 +75,17 @@ export async function render(el) {
         subject = c.subject;
         material = relevantExcerpt(c.material, history.slice(-3).map((h) => h.content).join(" "), 6000);
       }
-      const r = await ai("tutor", { messages: history, mode, grade: ctx.profile?.grade, subject, material });
+      let raf = 0;
+      const bub = pending.querySelector(".bub");
+      const full = await aiStream("tutor", { messages: history, mode, grade: ctx.profile?.grade, subject, material }, (t) => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => { raf = 0; const near = log.scrollHeight - log.scrollTop - log.clientHeight < 80; bub.innerHTML = md(t); if (near) log.scrollTop = log.scrollHeight; });
+      });
+      cancelAnimationFrame(raf);
+      const r = { text: full };
       history.push({ role: "assistant", content: r.text });
-      pending.querySelector(".bub").innerHTML = md(r.text);
+      bub.innerHTML = md(r.text);
+      log.scrollTop = log.scrollHeight;
       const tools = document.createElement("div");
       tools.className = "msg-tools";
       tools.innerHTML = `<button data-listen>${icon("volume")} Dinle</button><button data-copy>Kopyala</button>`;

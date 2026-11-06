@@ -14,7 +14,7 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), { status
 const fail = (message, status = 400, code) => json({ error: message, code }, status);
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     try {
@@ -29,8 +29,18 @@ export default {
       const user = await authenticate(request, env);
       const body = await request.json().catch(() => null);
       if (!body) return fail("Geçersiz istek.");
-      if (url.pathname === "/api/ai") return await handleAI(body, env, user);
-      if (url.pathname === "/api/tts") return await handleTTS(body, env, user);
+      if (url.pathname === "/api/admin/ai-check") return await adminAICheck(env, user);
+      if (url.pathname === "/api/ai" || url.pathname === "/api/tts") {
+        const task = url.pathname === "/api/tts" ? "tts" : String(body.task || "").slice(0, 20);
+        try {
+          const r = url.pathname === "/api/ai" ? await handleAI(body, env, user) : await handleTTS(body, env, user);
+          logAI(env, ctx, user, task, true);
+          return r;
+        } catch (e) {
+          if (e instanceof HttpError && e.status >= 500 || e?.status === 429) logAI(env, ctx, user, task, false);
+          throw e;
+        }
+      }
       return fail("Bulunamadı.", 404);
     } catch (e) {
       if (e instanceof HttpError) return fail(e.message, e.status, e.code);
@@ -63,7 +73,37 @@ async function authenticate(request, env) {
   });
   if (!res.ok) throw new HttpError(401, "Oturumun sona ermiş. Tekrar giriş yap.", "unauthorized");
   const u = await res.json();
-  return { id: u.id };
+  return { id: u.id, email: (u.email || "").toLowerCase(), token };
+}
+
+const ADMIN_EMAIL = "aliefeertem11@gmail.com";
+
+// Yapay zekâ kullanımını Supabase'e say (admin paneli için). Kullanıcının kendi oturumuyla, arka planda.
+function logAI(env, ctx, user, task, ok) {
+  if (!user?.token || !env.SUPABASE_URL || !ctx?.waitUntil) return;
+  ctx.waitUntil(
+    fetch(`${env.SUPABASE_URL}/rest/v1/rpc/log_ai`, {
+      method: "POST",
+      headers: { "content-type": "application/json", apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${user.token}` },
+      body: JSON.stringify({ p_task: task, p_ok: ok }),
+    }).catch(() => {}),
+  );
+}
+
+// Admin: her ücretsiz modeli küçük bir istekle dener
+async function adminAICheck(env, user) {
+  if (user.email !== ADMIN_EMAIL) throw new HttpError(403, "Yetkin yok.", "forbidden");
+  const results = [];
+  for (const model of TEXT_FALLBACKS) {
+    const t0 = Date.now();
+    try {
+      const d = await geminiOnce(env, { model, contents: [{ role: "user", parts: [{ text: "Sadece 'tamam' yaz." }] }], maxTokens: 50 });
+      results.push({ model, ok: !!textOf(d), ms: Date.now() - t0, error: textOf(d) ? "" : "boş cevap" });
+    } catch (e) {
+      results.push({ model, ok: false, ms: Date.now() - t0, error: e.code === "quota" ? "kota dolu" : e.code === "busy" ? "yoğun" : e.code === "model_not_found" ? "yok" : e.message });
+    }
+  }
+  return json({ results });
 }
 
 // ───────── Gemini ─────────
@@ -181,8 +221,10 @@ async function handleAI(b, env) {
       return json(await taskPlan(b, env));
     case "step":
       return json(await taskStep(b, env));
-    case "tutor":
-      return json(await taskTutor(b, env));
+    case "tutor": {
+      const r = await taskTutor(b, env);
+      return r instanceof Response ? r : json(r);
+    }
     case "solve":
       return json(await taskSolve(b, env));
     case "podcast":
@@ -292,15 +334,74 @@ async function taskTutor(b, env) {
     hint: "Asla tam çözümü verme; yalnızca bir sonraki adım için küçük bir ipucu ver.",
     practice: "Konuyla ilgili yeni bir alıştırma sorusu sor; öğrenci cevaplayınca değerlendir ve açıkla.",
   };
-  const data = await gemini(env, {
+  const req = {
     model: env.GEMINI_MODEL || "gemini-flash-latest",
     system: `Sen ALERT AI'ın sabırlı, cesaretlendirici ve dürüst yapay zekâ eğitmenisin. ${b.grade ? `Öğrenci: ${clip(b.grade, 40)}.` : ""} ${b.subject ? `Ders: ${clip(b.subject, 80)}.` : ""} ${modes[b.mode] || modes.explain} Öğrenci hangi dilde yazarsa o dilde cevap ver. Kısa paragraflar kullan. Matematiği LaTeX ile yaz. Emin olmadığın bilgiyi uydurma.${b.material ? `\n\nÖğrencinin materyalinden ilgili bölüm:\n"""${clip(b.material, 6000)}"""` : ""}`,
     contents: msgs.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: clip(m.content, 6000) }] })),
     temperature: 0.6,
-  });
+  };
+  if (b.stream) return geminiStream(env, req);
+  const data = await gemini(env, req);
   const text = textOf(data);
   if (!text) throw new HttpError(502, "Boş cevap geldi. Tekrar dene.", "bad_output");
   return { text };
+}
+
+// Akışlı cevap: metin parça parça gelir (eğitmen sohbeti hızlı hissettirsin diye)
+async function geminiStream(env, { model, contents, system, temperature = 0.6 }) {
+  if (!env.GEMINI_API_KEY) throw new HttpError(503, "Yapay zekâ anahtarı (GEMINI_API_KEY) tanımlı değil.", "not_configured");
+  const models = [...new Set([model, ...TEXT_FALLBACKS])];
+  let lastErr = null;
+  for (const m of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ti = thinkIdx[m] || 0;
+      const think = THINK_OPTS[ti];
+      const body = { contents, generationConfig: { temperature, maxOutputTokens: 16384, ...(think ? { thinkingConfig: think } : {}) } };
+      if (system) body.systemInstruction = { parts: [{ text: system }] };
+      let res;
+      try {
+        res = await fetch(`${BASE(env)}/models/${m}:streamGenerateContent?alt=sse`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        lastErr = new HttpError(502, "Yapay zekâ servisine ulaşılamadı.", "provider");
+        break;
+      }
+      if (res.ok) return sseToText(res.body);
+      const t = await res.text().catch(() => "");
+      if (res.status === 429) throw new HttpError(429, "Ücretsiz yapay zekâ kotası şu an dolu. Birkaç dakika sonra (günlük sınırsa yarın) tekrar dene.", "quota");
+      if (/API key/i.test(t)) throw new HttpError(503, "Yapay zekâ anahtarı geçersiz.", "not_configured");
+      if (res.status === 400 && think && ti < THINK_OPTS.length - 1) { thinkIdx[m] = ti + 1; attempt--; continue; }
+      if (res.status === 503 || res.status === 500) { lastErr = new HttpError(503, "Yapay zekâ şu an çok yoğun. Bir dakika sonra tekrar dene.", "provider"); if (attempt === 0) { await sleep(1200); continue; } break; }
+      if (res.status === 404) { lastErr = new HttpError(502, `Model bulunamadı: ${m}`, "model_not_found"); break; }
+      throw new HttpError(502, `Yapay zekâ isteği başarısız oldu (${res.status}). Tekrar dene.`, "provider");
+    }
+  }
+  throw lastErr || new HttpError(502, "Yapay zekâ cevap vermedi.", "provider");
+}
+
+function sseToText(stream) {
+  const dec = new TextDecoder();
+  const enc = new TextEncoder();
+  let buf = "";
+  const out = new TransformStream({
+    transform(chunk, ctl) {
+      buf += dec.decode(chunk, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line.startsWith("data:")) continue;
+        try {
+          const t = textOf(JSON.parse(line.slice(5)));
+          if (t) ctl.enqueue(enc.encode(t));
+        } catch { /* yarım satır */ }
+      }
+    },
+  });
+  return new Response(stream.pipeThrough(out), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-stream": "1" } });
 }
 
 async function taskSolve(b, env) {

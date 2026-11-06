@@ -24,6 +24,34 @@ export function md(text) {
 }
 export const mdInline = (t) => md(t).replace(/^<p>/, "").replace(/<\/p>\s*$/, "");
 
+// Akışlı yapay zekâ çağrısı: metin geldikçe onText(tümMetin) çağrılır
+export async function aiStream(task, payload, onText) {
+  const token = await store.token();
+  let res;
+  try {
+    res = await fetch("/api/ai", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ task, ...payload, stream: true }) });
+  } catch {
+    throw new Error("Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.");
+  }
+  if (!res.ok || !res.headers.get("x-stream")) {
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || `İstek başarısız (${res.status}).`);
+    if (j.text) { onText(j.text); return j.text; }
+    throw new Error("Boş cevap geldi. Tekrar dene.");
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += dec.decode(value, { stream: true });
+    onText(text);
+  }
+  if (!text.trim()) throw new Error("Boş cevap geldi. Tekrar dene.");
+  return text;
+}
+
 // Yapay zekâ çağrısı (oturum belirteci ile)
 export async function ai(task, payload) {
   const token = await store.token();

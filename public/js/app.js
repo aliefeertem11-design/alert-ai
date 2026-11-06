@@ -7,7 +7,11 @@ export const ctx = { session: null, profile: null };
 const LOGO = `<a href="#/" class="logo"><svg width="30" height="30" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#141a26" stroke="#2a3446"/><path d="M32 13 L49 49 H40.5 L32 30 L23.5 49 H15 Z" fill="#8eaee6"/><circle cx="32" cy="44" r="3.4" fill="#e8eaef"/></svg><span>ALERT <b>AI</b></span></a>`;
 export { LOGO };
 
+export const ADMIN_EMAIL = "aliefeertem11@gmail.com";
+export const isAdmin = (email = ctx.session?.user?.email) => String(email || "").toLowerCase() === ADMIN_EMAIL;
+
 const NAV = [
+  { href: "#/ana", label: "ANA SAYFA", short: "Ana", icon: "home" },
   { href: "#/ogren", label: "ÖĞREN", short: "Öğren", icon: "path" },
   { href: "#/egitmen", label: "EĞİTMEN", short: "Eğitmen", icon: "chat" },
   { href: "#/podcast", label: "PODCAST", short: "Podcast", icon: "head" },
@@ -21,6 +25,8 @@ const ROUTES = [
   { re: /^#\/kayit$/, page: "auth", public: true, bare: true, arg: "signup" },
   { re: /^#\/sifre-unuttum$/, page: "auth", public: true, bare: true, arg: "forgot" },
   { re: /^#\/yeni-sifre$/, page: "auth", bare: true, arg: "newpass" },
+  { re: /^#\/ana$/, page: "home" },
+  { re: /^#\/admin$/, page: "admin" },
   { re: /^#\/ogren$/, page: "learn" },
   { re: /^#\/yeni$/, page: "wizard", bare: true },
   { re: /^#\/adim\/([\w-]+)\/([\w-]+)$/, page: "player", bare: true },
@@ -46,15 +52,15 @@ async function route() {
   const hash = location.hash || "#/";
   // Supabase e-posta bağlantıları (#access_token=...) oturumu kendi işler
   if (/access_token|error_description/.test(hash)) {
-    setTimeout(() => go(/type=recovery/.test(hash) ? "#/yeni-sifre" : "#/ogren"), 300);
+    setTimeout(() => go(/type=recovery/.test(hash) ? "#/yeni-sifre" : "#/ana"), 300);
     return;
   }
   const r = ROUTES.find((x) => x.re.test(hash)) || ROUTES[0];
   const params = hash.match(r.re)?.slice(1) || [];
   ctx.session = await store.session();
   if (!r.public && !ctx.session) return go("#/giris");
-  if (r.page === "landing" && ctx.session) return go("#/ogren");
-  if ((r.arg === "login" || r.arg === "signup") && ctx.session) return go("#/ogren");
+  if (r.page === "landing" && ctx.session) return go("#/ana");
+  if ((r.arg === "login" || r.arg === "signup") && ctx.session) return go("#/ana");
   if (ctx.session && !ctx.profile) {
     try {
       await refreshProfile();
@@ -93,7 +99,7 @@ function renderShell(hash) {
   <div class="shell">
     <aside class="side">
       ${LOGO}
-      <nav>${NAV.map((n) => `<a href="${n.href}" class="${active(n.href) ? "on" : ""}">${icon(n.icon)}${n.label}</a>`).join("")}</nav>
+      <nav>${NAV.map((n) => `<a href="${n.href}" class="${active(n.href) ? "on" : ""}">${icon(n.icon)}${n.label}</a>`).join("")}${isAdmin() ? `<a href="#/admin" class="${active("#/admin") ? "on" : ""}">${icon("crown")}ADMİN</a>` : ""}</nav>
       <div class="me"><b>${esc(p.name || ctx.session?.user?.email?.split("@")[0] || "")}</b><span class="muted">${esc(ctx.session?.user?.email || "")}</span>${isLocal() ? `<div class="badge" style="margin-top:8px">Yerel deneme modu</div>` : ""}</div>
     </aside>
     <div class="main"><div class="main-inner" id="page"></div></div>

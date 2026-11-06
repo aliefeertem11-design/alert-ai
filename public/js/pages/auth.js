@@ -63,7 +63,7 @@ export function render(el, { arg }) {
       if (arg === "login") {
         await store.signIn(email, pw);
         await refreshProfile();
-        go("#/ogren");
+        go("#/ana");
       } else if (arg === "signup") {
         const r = await store.signUp(email, pw, name);
         if (r.needsConfirm) {
@@ -73,13 +73,13 @@ export function render(el, { arg }) {
           return;
         }
         await refreshProfile();
-        go("#/yeni");
+        go("#/ana");
       } else if (arg === "forgot") {
         await store.resetPassword(email);
         msg.innerHTML = `<div class="ok-box">Hesap varsa sıfırlama bağlantısı ${esc(email)} adresine gönderildi.</div>`;
       } else {
         await store.updatePassword(pw);
-        go("#/ogren");
+        go("#/ana");
       }
     } catch (err) {
       msg.innerHTML = `<div class="err">${esc(err.message)}</div>`;

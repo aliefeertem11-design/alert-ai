@@ -372,3 +372,44 @@ input[type=range] { accent-color: var(--acchi); width: 100%; }
   .chat-wrap { height: calc(100dvh - 150px); }
   .grade-input input { font-size: 52px; width: 140px; }
 }
+
+/* ───────── Ana sayfa ───────── */
+.home-h { margin: 28px 0 12px; }
+.home-top { display: grid; grid-template-columns: 1fr 200px; gap: 12px; }
+.home-goal { padding: 20px; }
+.home-streak { padding: 20px; display: flex; flex-direction: column; justify-content: center; }
+.home-streak .v { font-size: 26px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.home-streak .v .ic { width: 22px; height: 22px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.home-course { padding: 18px; text-align: left; display: block; width: 100%; transition: border-color .15s, transform .1s; }
+.home-course:hover { border-color: var(--line2); transform: translateY(-1px); }
+.hc-sub { font-size: 16px; display: block; }
+.hc-ex { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-new { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; border-style: dashed; min-height: 130px; }
+.home-new .plus { width: 40px; height: 40px; border-radius: 12px; background: var(--acclo); color: var(--acchi); display: grid; place-items: center; }
+.home-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.home-tools .card { padding: 16px; display: flex; flex-direction: column; gap: 4px; transition: border-color .15s; }
+.home-tools .card:hover { border-color: var(--line2); }
+.t-ic { width: 36px; height: 36px; border-radius: 10px; background: var(--s2); display: grid; place-items: center; color: var(--acchi); margin-bottom: 6px; }
+@media (max-width: 760px) { .home-top { grid-template-columns: 1fr; } .home-streak { flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; } .home-streak .v { margin-top: 0 !important; } }
+
+/* ───────── Admin ───────── */
+.adm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+.adm-stat { padding: 14px 16px; }
+.adm-stat .v { font-size: 22px; font-weight: 800; }
+.adm-stat small { color: var(--muted); font-size: 12.5px; }
+.adm-chart { display: flex; align-items: flex-end; gap: 6px; height: 140px; padding-top: 10px; }
+.adm-chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; min-width: 0; }
+.adm-chart .bars { display: flex; gap: 2px; align-items: flex-end; height: 100%; width: 100%; justify-content: center; }
+.adm-chart .bars i { display: block; width: 30%; max-width: 12px; border-radius: 3px 3px 0 0; min-height: 2px; }
+.adm-chart small { font-size: 10.5px; color: var(--muted); }
+.adm-legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--ink2); flex-wrap: wrap; }
+.adm-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.adm-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.adm-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.adm-table tr.row { cursor: pointer; }
+.adm-table tr.row:hover td { background: var(--s1); }
+.adm-scroll { overflow-x: auto; }
+.adm-mail { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) { .adm-two { grid-template-columns: 1fr !important; } }

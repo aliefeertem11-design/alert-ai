@@ -142,7 +142,7 @@ export function render(el) {
       </div>
     </div></div>`;
     steps[step].bind(el.querySelector("#body"));
-    el.querySelector("#close").onclick = () => go("#/ogren");
+    el.querySelector("#close").onclick = () => go("#/ana");
     el.querySelector("#back").onclick = () => { step--; draw(); };
     el.querySelector("#next").onclick = () => {
       if (!steps[step].ok()) return;
