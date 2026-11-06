@@ -1,0 +1,12 @@
+{
+  "name": "alert-ai",
+  "private": true,
+  "description": "ALERT AI — öğrenciler için ücretsiz yapay zekâ çalışma platformu",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

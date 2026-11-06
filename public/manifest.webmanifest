@@ -1,0 +1,1 @@
+{ "name": "ALERT AI", "short_name": "ALERT AI", "start_url": "/#/ogren", "display": "standalone", "background_color": "#0a0c10", "theme_color": "#0a0c10", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }

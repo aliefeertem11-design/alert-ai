@@ -1,0 +1,17 @@
+{
+  // ALERT AI — Cloudflare Workers yapılandırması
+  "name": "alert-ai",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // Supabase → Project Settings → API (Data API) sayfasından kopyala
+    "SUPABASE_URL": "https://jvaxvzxyiodnonasvdgz.supabase.co",
+    "SUPABASE_ANON_KEY": ""
+  }
+  // GEMINI_API_KEY buraya YAZILMAZ: Cloudflare panelinde "Secret" olarak eklenir.
+}
