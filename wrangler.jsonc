@@ -11,7 +11,7 @@
   "vars": {
     // Supabase → Project Settings → API (Data API) sayfasından kopyala
     "SUPABASE_URL": "https://jvaxvzxyiodnonasvdgz.supabase.co",
-    "SUPABASE_ANON_KEY": ""
+    "SUPABASE_ANON_KEY": "sb_publishable_r_RlPhFrsUq6l1PK1LS6xQ__7wCdqTb"
   }
   // GEMINI_API_KEY buraya YAZILMAZ: Cloudflare panelinde "Secret" olarak eklenir.
 }
